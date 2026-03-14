@@ -238,6 +238,7 @@ namespace WebRtcVoice
                 {
                     m_log.WarnFormat("{0}[ProvisionVoice]: voice_server_type is not 'webrtc'. Request: {1}", logHeader, map.ToString());
                     response.RawBuffer = llsdUndefAnswerBytes;
+                    response.StatusCode = (int)HttpStatusCode.OK;
                     return;
                 }
             }
@@ -364,6 +365,7 @@ namespace WebRtcVoice
                 if (vstosd is OSDString vst && !((string)vst).Equals("webrtc", StringComparison.OrdinalIgnoreCase))
                 {
                     response.RawBuffer = llsdUndefAnswerBytes;
+                    response.StatusCode = (int)HttpStatusCode.OK;
                     return;
                 }
             }
