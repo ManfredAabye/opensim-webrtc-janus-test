@@ -113,24 +113,32 @@ namespace WebRtcVoice
                         }
                         else
                         {
-                            m_log.ErrorFormat("{0} JoinRoom. Recovery retry failed for room {1}. Resp={2}",
-                                    LogHeader, RoomId, retryJoinResp?.ToString() ?? "null");
+                            m_log.ErrorFormat("{0} JoinRoom. Recovery retry failed for room {1}",
+                                    LogHeader, RoomId);
+                            if (m_log.IsDebugEnabled)
+                                m_log.DebugFormat("{0} JoinRoom. Recovery retry detail: {1}", LogHeader, retryJoinResp?.ToString() ?? "null");
                         }
                     }
                     else
                     {
-                        m_log.ErrorFormat("{0} JoinRoom. Recovery failed: could not clear previous room membership. Resp={1}",
-                                LogHeader, joinResp.ToString());
+                        m_log.ErrorFormat("{0} JoinRoom. Recovery failed: could not clear previous room membership",
+                                LogHeader);
+                        if (m_log.IsDebugEnabled)
+                            m_log.DebugFormat("{0} JoinRoom. Recovery failed detail: {1}", LogHeader, joinResp.ToString());
                     }
                 }
                 else
                 {
                     if (joinResp is not null && joinResp.AudioBridgeReturnCode == "joined" && joinResp.ParticipantId <= 0)
                     {
-                        m_log.ErrorFormat("{0} JoinRoom. Joined response contains invalid participant id {1} for room {2}. Resp={3}",
-                                LogHeader, joinResp.ParticipantId, RoomId, joinResp.ToString());
+                        m_log.ErrorFormat("{0} JoinRoom. Joined response contains invalid participant id {1} for room {2}",
+                                LogHeader, joinResp.ParticipantId, RoomId);
+                        if (m_log.IsDebugEnabled)
+                            m_log.DebugFormat("{0} JoinRoom. Invalid participant detail: {1}", LogHeader, joinResp.ToString());
                     }
-                    m_log.ErrorFormat("{0} JoinRoom. Failed to join room {1}. Resp={2}", LogHeader, RoomId, joinResp.ToString());
+                    m_log.ErrorFormat("{0} JoinRoom. Failed to join room {1}", LogHeader, RoomId);
+                    if (m_log.IsDebugEnabled)
+                        m_log.DebugFormat("{0} JoinRoom. Failure detail: {1}", LogHeader, joinResp?.ToString() ?? "null");
                 }
             }
             catch (Exception e)

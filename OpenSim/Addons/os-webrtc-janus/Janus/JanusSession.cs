@@ -164,7 +164,9 @@ namespace WebRtcVoice
                     }
                     else
                     {
-                        m_log.ErrorFormat("{0} DestroySession: failed. Resp: {1}", LogHeader, resp.ToString());
+                        m_log.ErrorFormat("{0} DestroySession: failed response", LogHeader);
+                        if (m_log.IsDebugEnabled)
+                            m_log.DebugFormat("{0} DestroySession: response detail {1}", LogHeader, resp.ToString());
                     }
                 }
             }
@@ -299,7 +301,9 @@ namespace WebRtcVoice
                 }
                 else
                 {
-                    m_log.ErrorFormat("{0} SendToJanus: response not successful {1}", LogHeader, response);
+                    m_log.ErrorFormat("{0} SendToJanus: response not successful", LogHeader);
+                    if (m_log.IsDebugEnabled)
+                        m_log.DebugFormat("{0} SendToJanus: response detail {1}", LogHeader, response);
                     _OutstandingRequests.TryRemove(pReq.TransactionId, out _);
                 }
             }
@@ -433,7 +437,9 @@ namespace WebRtcVoice
                     }
                     else
                     {
-                        m_log.ErrorFormat("{0} GetFromJanus: response not successful {1}", LogHeader, response);
+                        m_log.ErrorFormat("{0} GetFromJanus: response not successful", LogHeader);
+                        if (m_log.IsDebugEnabled)
+                            m_log.DebugFormat("{0} GetFromJanus: response detail {1}", LogHeader, response);
                         var eResp = new ErrorResp("GETERROR");
                         // Add the sessionId so the proper session can be shut down
                         eResp.AddSessionId(SessionId);
@@ -605,7 +611,9 @@ namespace WebRtcVoice
                                         else
                                         {
                                             OnError?.Invoke(eventResp);
-                                            m_log.ErrorFormat("{0} EventLongPoll: error with no transaction. {1}", LogHeader, resp.ToString());
+                                            m_log.ErrorFormat("{0} EventLongPoll: error with no transaction", LogHeader);
+                                            if (m_log.IsDebugEnabled)
+                                                m_log.DebugFormat("{0} EventLongPoll: error detail {1}", LogHeader, resp.ToString());
                                         }
                                         break;
                                     case "event":
@@ -625,7 +633,9 @@ namespace WebRtcVoice
                                             }
                                             else
                                             {
-                                                m_log.WarnFormat("{0} EventLongPoll: event with unknown transaction {1}", LogHeader, resp.ToString());
+                                                m_log.WarnFormat("{0} EventLongPoll: event with unknown transaction", LogHeader);
+                                                if (m_log.IsDebugEnabled)
+                                                    m_log.DebugFormat("{0} EventLongPoll: unknown transaction detail {1}", LogHeader, resp.ToString());
                                             }
                                             OnEvent?.Invoke(eventResp);
                                         }
