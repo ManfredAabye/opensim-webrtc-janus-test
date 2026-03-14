@@ -6,7 +6,7 @@ using Nini.Config;
 
 namespace WebRtcVoice
 {
-    internal static class WebRtcDebugControl
+    public static class WebRtcDebugControl
     {
         private static readonly object _Sync = new object();
 
