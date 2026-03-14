@@ -56,6 +56,7 @@ namespace WebRtcVoice
         private string _JanusAdminURI = String.Empty;
         private string _JanusAdminToken = String.Empty;
 
+        private bool _JanusDebug = false;
         private bool _MessageDetails = false;
         // Maximum ICE candidates accepted from one VoiceSignalingRequest call.
         // <= 0 means no limit.
@@ -72,6 +73,8 @@ namespace WebRtcVoice
 
         public WebRtcJanusService(IConfigSource pConfig) : base(pConfig)
         {
+            WebRtcDebugControl.ApplyFromConfig(pConfig);
+
             Assembly assembly = Assembly.GetExecutingAssembly();
             string version = assembly.GetName().Version?.ToString() ?? "unknown";
 
@@ -90,6 +93,7 @@ namespace WebRtcVoice
                     _JanusAdminURI = janusConfig.GetString("JanusGatewayAdminURI", String.Empty);
                     _JanusAdminToken = janusConfig.GetString("AdminAPIToken", String.Empty);
                     // Debugging options
+                    _JanusDebug = janusConfig.GetBoolean("JanusDebug", false);
                     _MessageDetails = janusConfig.GetBoolean("MessageDetails", false);
                     _MaxSignalingCandidatesPerRequest = janusConfig.GetInt("MaxSignalingCandidatesPerRequest", 20);
                     _RejoinCooldownMs = janusConfig.GetInt("RejoinCooldownMs", 250);
@@ -150,7 +154,7 @@ namespace WebRtcVoice
 
         private async Task ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
         {
-            JanusSession janusSession = new JanusSession(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _MessageDetails);
+            JanusSession janusSession = new JanusSession(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _JanusDebug, _MessageDetails);
             if (await janusSession.CreateSession())
             {
                 _log.DebugFormat("{0} JanusSession created", LogHeader);

@@ -84,6 +84,8 @@ namespace WebRtcVoice
         // ISharedRegionModule.Initialize
         public void Initialise(IConfigSource config)
         {
+            WebRtcDebugControl.ApplyFromConfig(config);
+
             m_Config = config.Configs["WebRtcVoice"];
             if (m_Config is not null)
             {

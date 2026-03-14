@@ -48,6 +48,8 @@ namespace WebRtcVoice
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static readonly string LogHeader = "[JANUS SESSION]";
 
+        // Set to true to enable Janus session debug logging.
+        private bool _DebugEnabled = false;
         // Set to 'true' to get the messages send and received from Janus
         private bool _MessageDetails = false;
 
@@ -70,9 +72,10 @@ namespace WebRtcVoice
         public bool IsConnected { get; set; }
 
         // Wrapper around the session connection to Janus-gateway
-        public JanusSession(string pServerURI, string pAPIToken, string pAdminURI, string pAdminToken, bool pDebugMessages = false)
+        public JanusSession(string pServerURI, string pAPIToken, string pAdminURI, string pAdminToken, bool pDebugEnabled = false, bool pDebugMessages = false)
         {
-            m_log.DebugFormat("{0} JanusSession constructor", LogHeader);
+            _DebugEnabled = pDebugEnabled;
+            Debug("{0} JanusSession constructor", LogHeader);
             _JanusServerURI = pServerURI;
             _JanusAPIToken = pAPIToken;
             _JanusAdminURI = pAdminURI;
@@ -111,7 +114,7 @@ namespace WebRtcVoice
                     SessionId = sessionResp.returnedId;
                     IsConnected = true;
                     SessionUri = _JanusServerURI + "/" + SessionId;
-                    m_log.DebugFormat("{0} CreateSession. Created. ID={1}, URL={2}", LogHeader, SessionId, SessionUri);
+                    Debug("{0} CreateSession. Created. ID={1}, URL={2}", LogHeader, SessionId, SessionUri);
                     ret = true;
                     StartLongPoll();
                 }
@@ -137,7 +140,7 @@ namespace WebRtcVoice
                 if (resp is not null && resp.isSuccess)
                 {
                     // Note that setting IsConnected to false will cause the long poll to exit
-                    m_log.DebugFormat("{0} DestroySession. Destroyed", LogHeader);
+                    Debug("{0} DestroySession. Destroyed", LogHeader);
                 }
                 else
                 {
@@ -148,11 +151,11 @@ namespace WebRtcVoice
                         {
                             case 458:
                                 // This is the error code for a session that is already destroyed
-                                m_log.DebugFormat("{0} DestroySession: session already destroyed", LogHeader);
+                                Debug("{0} DestroySession: session already destroyed", LogHeader);
                                 break;
                             case 459:
                                 // This is the error code for handle already destroyed
-                                if (_MessageDetails) m_log.DebugFormat("{0} DestroySession: Handle not found", LogHeader);
+                                if (_MessageDetails) Debug("{0} DestroySession: Handle not found", LogHeader);
                                 break;
                             default:
                                 m_log.ErrorFormat("{0} DestroySession: failed {1}", LogHeader, eResp.errorReason);
@@ -211,6 +214,14 @@ namespace WebRtcVoice
         {
             _Plugins.Add(pPlugin.PluginName, pPlugin);
         }
+
+        private void Debug(string pFormat, params object[] pArgs)
+        {
+            if (_DebugEnabled)
+            {
+                m_log.DebugFormat(pFormat, pArgs);
+            }
+        }
         // ====================================================================
         // Post to the session
         public async Task<JanusMessageResp> SendToSession(JanusMessageReq pReq)
@@ -246,7 +257,7 @@ namespace WebRtcVoice
         {
             AddJanusHeaders(pReq);
             // m_log.DebugFormat("{0} SendToJanus", LogHeader);
-            if (_MessageDetails) m_log.DebugFormat("{0} SendToJanus. URI={1}, req={2}", LogHeader, pURI, pReq.ToJson());
+            if (_MessageDetails) Debug("{0} SendToJanus. URI={1}, req={2}", LogHeader, pURI, pReq.ToJson());
 
             JanusMessageResp ret = null;
             try
@@ -273,7 +284,7 @@ namespace WebRtcVoice
                     if (ret.CheckReturnCode("ack"))
                     {
                         // Some messages are asynchronous and completed with an event
-                        if (_MessageDetails) m_log.DebugFormat("{0} SendToJanus: ack response {1}", LogHeader, respStr);
+                        if (_MessageDetails) Debug("{0} SendToJanus: ack response {1}", LogHeader, respStr);
 
                         // Wait on the local TaskCompletionSource instead of re-reading the dictionary.
                         // This avoids a race where the long-poll thread already removed the request.
@@ -283,7 +294,7 @@ namespace WebRtcVoice
                     {
                         // If the response is not an ack, that means a synchronous request/response so return the response
                         _OutstandingRequests.TryRemove(pReq.TransactionId, out _);
-                        if (_MessageDetails) m_log.DebugFormat("{0} SendToJanus: response {1}", LogHeader, respStr);
+                        if (_MessageDetails) Debug("{0} SendToJanus: response {1}", LogHeader, respStr);
                     }
                 }
                 else
@@ -439,7 +450,7 @@ namespace WebRtcVoice
                 }
                 catch (TaskCanceledException e)
                 {
-                    if (_MessageDetails) m_log.DebugFormat("{0} GetFromJanus: task canceled: {1}", LogHeader, e.Message);
+                    if (_MessageDetails) Debug("{0} GetFromJanus: task canceled: {1}", LogHeader, e.Message);
                     var eResp = new ErrorResp("GETERROR");
                     eResp.SetError(499, "Task canceled");
                     ret = eResp;
@@ -504,7 +515,7 @@ namespace WebRtcVoice
         {
             bool running = true;
 
-            m_log.DebugFormat("{0} EventLongPoll", LogHeader);
+            Debug("{0} EventLongPoll", LogHeader);
             Task.Run(async () => {
                 while (running && IsConnected)
                 {
@@ -524,27 +535,27 @@ namespace WebRtcVoice
                                         break;
                                     case "server_info":
                                         // Just info on the Janus instance
-                                        m_log.DebugFormat("{0} EventLongPoll: server_info {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: server_info {1}", LogHeader, resp.ToString());
                                         break;
                                     case "ack":
                                         // 'ack' says the request was received and an event will follow
-                                        if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: ack {1}", LogHeader, resp.ToString());
+                                        if (_MessageDetails) Debug("{0} EventLongPoll: ack {1}", LogHeader, resp.ToString());
                                         break;
                                     case "success":
                                         // success is a sync response that says the request was completed
-                                        if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: success {1}", LogHeader, resp.ToString());
+                                        if (_MessageDetails) Debug("{0} EventLongPoll: success {1}", LogHeader, resp.ToString());
                                         break;
                                     case "trickle":
                                         // got a trickle ICE candidate from Janus
                                         // this is for reverse communication from Janus to the client and we don't do that
-                                        if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: trickle {1}", LogHeader, resp.ToString());
+                                        if (_MessageDetails) Debug("{0} EventLongPoll: trickle {1}", LogHeader, resp.ToString());
                                         OnTrickle?.Invoke(eventResp);
                                         break;
                                     case "webrtcup":
                                         //  ICE and DTLS succeeded, and so Janus correctly established a PeerConnection with the user/application;
                                         string webrtcupSessionId = ExtractLogId(resp, "session_id");
                                         string webrtcupSender = ExtractLogId(resp, "sender");
-                                        m_log.DebugFormat("{0} EventLongPoll: webrtcup session_id={1}, sender={2}",
+                                        Debug("{0} EventLongPoll: webrtcup session_id={1}, sender={2}",
                                                             LogHeader,
                                                             string.IsNullOrEmpty(webrtcupSessionId) ? "<none>" : webrtcupSessionId,
                                                             string.IsNullOrEmpty(webrtcupSender) ? "<none>" : webrtcupSender);
@@ -552,7 +563,7 @@ namespace WebRtcVoice
                                     case "hangup":
                                         // The PeerConnection was closed, either by the user/application or by Janus itself;
                                         // If one is in the room, when a "hangup" event happens, it means that the user left the room.
-                                        m_log.DebugFormat("{0} EventLongPoll: hangup session_id={1}, sender={2}, reason={3}, tx={4}",
+                                        Debug("{0} EventLongPoll: hangup session_id={1}, sender={2}, reason={3}, tx={4}",
                                                         LogHeader,
                                                         ExtractLogId(resp, "session_id"),
                                                         ExtractLogId(resp, "sender"),
@@ -562,7 +573,7 @@ namespace WebRtcVoice
                                         break;
                                     case "detached":
                                         // a plugin asked the core to detach one of our handles
-                                        m_log.DebugFormat("{0} EventLongPoll: detached session_id={1}, sender={2}, tx={3}",
+                                        Debug("{0} EventLongPoll: detached session_id={1}, sender={2}, tx={3}",
                                                         LogHeader,
                                                         ExtractLogId(resp, "session_id"),
                                                         ExtractLogId(resp, "sender"),
@@ -571,7 +582,7 @@ namespace WebRtcVoice
                                         break;
                                     case "media":
                                         // Janus is receiving (receiving: true/false) audio/video (type: "audio/video") on this PeerConnection;
-                                        m_log.DebugFormat("{0} EventLongPoll: media session_id={1}, sender={2}, tx={3}",
+                                        Debug("{0} EventLongPoll: media session_id={1}, sender={2}, tx={3}",
                                                         LogHeader,
                                                         ExtractLogId(resp, "session_id"),
                                                         ExtractLogId(resp, "sender"),
@@ -579,14 +590,14 @@ namespace WebRtcVoice
                                         break;
                                     case "slowlink":
                                         // Janus detected a slowlink (uplink: true/false) on this PeerConnection;
-                                        m_log.DebugFormat("{0} EventLongPoll: slowlink session_id={1}, sender={2}, tx={3}",
+                                        Debug("{0} EventLongPoll: slowlink session_id={1}, sender={2}, tx={3}",
                                                         LogHeader,
                                                         ExtractLogId(resp, "session_id"),
                                                         ExtractLogId(resp, "sender"),
                                                         FormatTransactionId(resp.TransactionId));
                                         break;
                                     case "error":
-                                        m_log.DebugFormat("{0} EventLongPoll: error {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: error {1}", LogHeader, resp.ToString());
                                         if (TryGetOutstandingRequest(resp.TransactionId, out OutstandingRequest outstandingRequest))
                                         {
                                             outstandingRequest.TaskCompletionSource.SetResult(resp);
@@ -598,7 +609,7 @@ namespace WebRtcVoice
                                         }
                                         break;
                                     case "event":
-                                        if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: event {1}", LogHeader, resp.ToString());
+                                        if (_MessageDetails) Debug("{0} EventLongPoll: event {1}", LogHeader, resp.ToString());
                                         if (TryGetOutstandingRequest(resp.TransactionId, out OutstandingRequest outstandingRequest2))
                                         {
                                             // Someone is waiting for this event
@@ -610,7 +621,7 @@ namespace WebRtcVoice
                                             // Keep unknown transaction ids visible, but do not treat missing transaction ids as errors.
                                             if (String.IsNullOrEmpty(resp.TransactionId))
                                             {
-                                                if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: async event with no transaction {1}", LogHeader, resp.ToString());
+                                                if (_MessageDetails) Debug("{0} EventLongPoll: async event with no transaction {1}", LogHeader, resp.ToString());
                                             }
                                             else
                                             {
@@ -620,22 +631,22 @@ namespace WebRtcVoice
                                         }
                                         break;
                                     case "message":
-                                        m_log.DebugFormat("{0} EventLongPoll: message {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: message {1}", LogHeader, resp.ToString());
                                         OnMessage?.Invoke(eventResp);
                                         break;
                                     case "timeout":
                                         // Events for the audio bridge
-                                        m_log.DebugFormat("{0} EventLongPoll: timeout {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: timeout {1}", LogHeader, resp.ToString());
                                         break;
                                     case "joined":
                                         // Events for the audio bridge
                                         OnJoined?.Invoke(eventResp);
-                                        m_log.DebugFormat("{0} EventLongPoll: joined {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: joined {1}", LogHeader, resp.ToString());
                                         break;
                                     case "leaving":
                                         // Events for the audio bridge
                                         OnLeaving?.Invoke(eventResp);
-                                        m_log.DebugFormat("{0} EventLongPoll: leaving {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: leaving {1}", LogHeader, resp.ToString());
                                         break;
                                     case "GETERROR":
                                         // Special error response from the GET
@@ -654,10 +665,10 @@ namespace WebRtcVoice
                                                 break;
                                             case 499:
                                                 // "Task canceled" means the long poll was canceled
-                                                if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: Task canceled. URI={1}", LogHeader, SessionUri);
+                                                if (_MessageDetails) Debug("{0} EventLongPoll: Task canceled. URI={1}", LogHeader, SessionUri);
                                                 break;
                                             default:
-                                                m_log.DebugFormat("{0} EventLongPoll: unknown response. URI={1}: {2}",
+                                                Debug("{0} EventLongPoll: unknown response. URI={1}: {2}",
                                                             LogHeader, SessionUri, resp.ToString());
                                                 break;
                                         }   
@@ -666,7 +677,7 @@ namespace WebRtcVoice
                                         OnDisconnect?.Invoke(eventResp);
                                         break;
                                     default:
-                                        m_log.DebugFormat("{0} EventLongPoll: unknown response {1}", LogHeader, resp.ToString());
+                                        Debug("{0} EventLongPoll: unknown response {1}", LogHeader, resp.ToString());
                                         break;
                                 }
                             });
@@ -683,7 +694,7 @@ namespace WebRtcVoice
                         m_log.ErrorFormat("{0} EventLongPoll: exception {1}", LogHeader, e);
                     }
                 }
-                if (_MessageDetails)
+                if (_DebugEnabled && _MessageDetails)
                     m_log.InfoFormat("{0} EventLongPoll: Exiting long poll loop", LogHeader);
             });
         }

@@ -1,0 +1,14 @@
+[ServiceList]
+	VoiceServiceConnector = "${Const|PrivatePort}/WebRtcVoice.dll:WebRtcVoiceServerConnector"
+
+[WebRtcVoice]
+    Enabled = true
+    SpatialVoiceService = WebRtcJanusService.dll:WebRtcJanusService
+    NonSpatialVoiceService = WebRtcJanusService.dll:WebRtcJanusService
+
+[JanusWebRtcVoice]
+	JanusGatewayURI = http://127.0.0.1:8088/janus
+    JanusDebug = false
+    APIToken = mypasswd
+    JanusGatewayAdminURI = http://127.0.0.1:7088/admin
+    AdminAPIToken = mypasswd

@@ -1,0 +1,5 @@
+[WebRtcVoice]
+    Enabled = true
+    SpatialVoiceService = WebRtcVoice.dll:WebRtcVoiceServiceConnector
+    NonSpatialVoiceService = WebRtcVoice.dll:WebRtcVoiceServiceConnector
+    WebRtcVoiceServerURI = ${Const|PrivURL}:${Const|PrivatePort}

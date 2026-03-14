@@ -59,6 +59,8 @@ namespace WebRtcVoice
 
         public WebRtcVoiceServerConnector(IConfigSource pConfig, IHttpServer pServer, string pConfigName)
         {
+            WebRtcDebugControl.ApplyFromConfig(pConfig);
+
             IConfig moduleConfig = pConfig.Configs["WebRtcVoice"];
 
             if (moduleConfig is not null)
