@@ -15,6 +15,6 @@ Try matching the cosmetics to the original OpenSim.
 janus-gateway Positioning spatial sound for opensim-webrtc-janus-test. 
 https://github.com/ManfredAabye/janus-gateway
 
-Left, Right, Center, Font, Rear
+Left, Right, Center, Front, Rear
 
 ---
