@@ -121,8 +121,14 @@ namespace WebRtcVoice
                     if (_Enabled)
                     {
                         _log.DebugFormat("{0} Enabled", LogHeader);
-                        StartConnectionToJanus();
+                        if (!StartConnectionToJanus())
+                        {
+                            _log.ErrorFormat("{0} failed connection to Janus Gateway. Disabled", LogHeader);
+                            _Enabled = false;
+                            return;
+                        }
                         RegisterConsoleCommands();
+                        _log.InfoFormat("{0} Enabled", LogHeader);
                     }
                 }
                 else
@@ -138,21 +144,18 @@ namespace WebRtcVoice
             }
         }
 
-        // Start a thread to do the connection to the Janus server.
+        // Start the initial connection to the Janus server.
         // Here an initial session is created and then a handle to the audio bridge plugin
         //    is created for the console commands. Since webrtc PeerConnections that are created
         //    my Janus are per-session, the other sessions will be created by the viewer requests.
-        private void StartConnectionToJanus()
+        private bool StartConnectionToJanus()
         {
             _log.DebugFormat("{0} StartConnectionToJanus", LogHeader);
-            Task.Run(async () =>
-            {
-                _ViewerSession = new JanusViewerSession(this);
-                await ConnectToSessionAndAudioBridge(_ViewerSession);
-            });
+            _ViewerSession = new JanusViewerSession(this);
+            return ConnectToSessionAndAudioBridge(_ViewerSession).GetAwaiter().GetResult();
         }
 
-        private async Task ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
+        private async Task<bool> ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
         {
             JanusSession janusSession = new JanusSession(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _JanusDebug, _MessageDetails);
             if (await janusSession.CreateSession())
@@ -174,16 +177,24 @@ namespace WebRtcVoice
                 {
                     _log.DebugFormat("{0} AudioBridgePluginHandle created", LogHeader);
                     // Requests through the capabilities will create rooms
+                    return true;
                 }
                 else
                 {
                     _log.ErrorFormat("{0} JanusPluginHandle not created", LogHeader);
+                    await janusSession.DestroySession();
+                    janusSession.Dispose();
                 }
             }
             else
             {
                 _log.ErrorFormat("{0} JanusSession not created", LogHeader);
-            }   
+            }
+
+            pViewerSession.Session = null;
+            pViewerSession.AudioBridge = null;
+            pViewerSession.VoiceServiceSessionId = null;
+            return false;
         }
 
         private void Handle_Hangup(EventResp pResp)
@@ -301,7 +312,17 @@ namespace WebRtcVoice
                 if (viewerSession.Session is null)
                 {
                     // This is a new session so we must create a new session and handle to the audio bridge
-                    await ConnectToSessionAndAudioBridge(viewerSession);
+                    if (!await ConnectToSessionAndAudioBridge(viewerSession))
+                    {
+                        errorMsg = "janus connection failed";
+                        _log.ErrorFormat("{0} ProvisionVoiceAccountRequest: failed to initialize Janus session", LogHeader);
+                        ret = new OSDMap
+                        {
+                            { "response", "failed" },
+                            { "error", errorMsg }
+                        };
+                        return ret;
+                    }
                 }
 
                 // TODO: need to keep count of users in a room to know when to close a room
