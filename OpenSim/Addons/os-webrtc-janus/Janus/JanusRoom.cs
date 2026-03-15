@@ -65,6 +65,20 @@ namespace WebRtcVoice
             // Close the room
         }
 
+        private static bool IsBenignJanusLeaveError(JanusMessageResp pResp, out int pJanusErrorCode, out string pJanusErrorReason)
+        {
+            pJanusErrorCode = 0;
+            pJanusErrorReason = String.Empty;
+            if (pResp is null || !pResp.isError)
+                return false;
+
+            ErrorResp errResp = new ErrorResp(pResp);
+            pJanusErrorCode = errResp.errorCode;
+            pJanusErrorReason = errResp.errorReason;
+
+            return pJanusErrorCode == 458 || pJanusErrorCode == 459;
+        }
+
         public async Task<bool> JoinRoom(JanusViewerSession pVSession)
         {
             bool ret = false;
@@ -77,6 +91,7 @@ namespace WebRtcVoice
                 //    out of order. Not "cleaning" (removing the data section) seems to work.
                 // string cleanSdp = CleanupSdp(pSdp);
                 var joinReq = new AudioBridgeJoinRoomReq(RoomId, pVSession.AgentId.ToString());
+                joinReq.SetSpatialPosition(pVSession.SpatialPosition, pVSession.SpatialPositionFrontBack);
                 // joinReq.SetJsep("offer", cleanSdp);
                 joinReq.SetJsep("offer", pVSession.Offer);
 
@@ -148,6 +163,52 @@ namespace WebRtcVoice
             return ret;
         }
 
+        public async Task<bool> ConfigureSpatialAudio(JanusViewerSession pVSession)
+        {
+            if (pVSession is null || pVSession.ParticipantId <= 0)
+                return false;
+
+            try
+            {
+                AudioBridgeConfigRoomReq req = new AudioBridgeConfigRoomReq();
+                req.SetSpatialPosition(pVSession.SpatialPosition, pVSession.SpatialPositionFrontBack);
+                JanusMessageResp resp = await _AudioBridge.SendPluginMsg(req);
+                if (resp is null)
+                    return false;
+
+                AudioBridgeResp abResp = new AudioBridgeResp(resp);
+                string returnCode = abResp.AudioBridgeReturnCode;
+                string janusReturnCode = resp.ReturnCode;
+                int errorCode = abResp.AudioBridgeErrorCode;
+
+                if (errorCode == 0 &&
+                    (abResp.isSuccess || returnCode == "event" || returnCode == "success" || janusReturnCode == "ack"))
+                {
+                    m_log.InfoFormat("{0} ConfigureSpatialAudio. Updated room {1}, participant={2}, preset={3}, lr={4}, fb={5}",
+                            LogHeader, RoomId, pVSession.ParticipantId, pVSession.SpatialAudioPositionPreset,
+                            pVSession.SpatialPosition, pVSession.SpatialPositionFrontBack);
+                    return true;
+                }
+
+                bool benignJanusError = IsBenignJanusLeaveError(resp, out int janusErrorCode, out string janusErrorReason);
+                if (benignJanusError)
+                {
+                    m_log.InfoFormat("{0} ConfigureSpatialAudio. Treating stale Janus state as already gone for room {1}, participant={2} (janusErrorCode={3}, reason={4})",
+                            LogHeader, RoomId, pVSession.ParticipantId, janusErrorCode, janusErrorReason);
+                    return true;
+                }
+
+                m_log.ErrorFormat("{0} ConfigureSpatialAudio. Failed room {1}, participant={2}, janus={3}, audiobridge={4}, errorCode={5}",
+                        LogHeader, RoomId, pVSession.ParticipantId, janusReturnCode, returnCode, errorCode);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("{0} ConfigureSpatialAudio. Exception {1}", LogHeader, e);
+            }
+
+            return false;
+        }
+
         private async Task<bool> RecoverAlreadyInRoomAndLeave(string pDisplay)
         {
             try
@@ -199,11 +260,20 @@ namespace WebRtcVoice
                             int errorCode = leaveResp.AudioBridgeErrorCode;
                             string abCode = leaveResp.AudioBridgeReturnCode;
                             string janusCode = leaveRespRaw.ReturnCode;
+                            bool benignJanusLeaveError = IsBenignJanusLeaveError(leaveRespRaw, out int janusErrorCode, out string janusErrorReason);
 
-                            if (errorCode == 0 || abCode == "left" || abCode == "event" || janusCode == "ack")
+                            if (errorCode == 0 || abCode == "left" || abCode == "event" || janusCode == "ack" || benignJanusLeaveError)
                             {
-                                m_log.InfoFormat("{0} RecoverAlreadyInRoomAndLeave. Cleared stale participant {1} from room {2}.",
-                                        LogHeader, participantId, roomId);
+                                if (benignJanusLeaveError)
+                                {
+                                    m_log.InfoFormat("{0} RecoverAlreadyInRoomAndLeave. Treating Janus stale state as cleared for participant {1} in room {2} (janusErrorCode={3}, reason={4}).",
+                                            LogHeader, participantId, roomId, janusErrorCode, janusErrorReason);
+                                }
+                                else
+                                {
+                                    m_log.InfoFormat("{0} RecoverAlreadyInRoomAndLeave. Cleared stale participant {1} from room {2}.",
+                                            LogHeader, participantId, roomId);
+                                }
                                 return true;
                             }
                         }
@@ -240,6 +310,13 @@ namespace WebRtcVoice
             bool ret = false;
             try
             {
+                if (pAttendeeSession is null || pAttendeeSession.ParticipantId <= 0)
+                {
+                    m_log.DebugFormat("{0} LeaveRoom. Skip leave for room {1}, invalid participant={2}",
+                            LogHeader, RoomId, pAttendeeSession?.ParticipantId ?? 0L);
+                    return true;
+                }
+
                 JanusMessageResp resp = await _AudioBridge.SendPluginMsg(
                     new AudioBridgeLeaveRoomReq(RoomId, pAttendeeSession.ParticipantId));
 
@@ -254,6 +331,7 @@ namespace WebRtcVoice
                 string returnCode = abResp.AudioBridgeReturnCode;
                 string janusReturnCode = resp.ReturnCode;
                 int errorCode = abResp.AudioBridgeErrorCode;
+                bool benignJanusLeaveError = IsBenignJanusLeaveError(resp, out int janusErrorCode, out string janusErrorReason);
                 bool isBenignAlreadyLeft =
                     errorCode == 487 &&
                     (returnCode == "event" || janusReturnCode == "event" || janusReturnCode == "ack");
@@ -274,10 +352,16 @@ namespace WebRtcVoice
                         m_log.InfoFormat("{0} LeaveRoom. Participant already left room {1}, participant={2} (errorCode=487)",
                             LogHeader, RoomId, pAttendeeSession.ParticipantId);
                     }
+                else if (benignJanusLeaveError)
+                {
+                    ret = true;
+                    m_log.InfoFormat("{0} LeaveRoom. Treating stale Janus state as already left for room {1}, participant={2} (janusErrorCode={3}, reason={4})",
+                            LogHeader, RoomId, pAttendeeSession.ParticipantId, janusErrorCode, janusErrorReason);
+                }
                 else
                 {
-                    m_log.ErrorFormat("{0} LeaveRoom. Failed room {1}, participant={2}, janus={3}, audiobridge={4}, errorCode={5}",
-                            LogHeader, RoomId, pAttendeeSession.ParticipantId, janusReturnCode, returnCode, errorCode);
+                    m_log.ErrorFormat("{0} LeaveRoom. Failed room {1}, participant={2}, janus={3}, audiobridge={4}, errorCode={5}, janusErrorCode={6}, reason={7}",
+                            LogHeader, RoomId, pAttendeeSession.ParticipantId, janusReturnCode, returnCode, errorCode, janusErrorCode, janusErrorReason);
                 }
             }
             catch (Exception e)

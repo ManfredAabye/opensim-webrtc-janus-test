@@ -28,6 +28,7 @@
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
 
 using OMV = OpenMetaverse;
 using OpenMetaverse.StructuredData;
@@ -68,6 +69,10 @@ namespace WebRtcVoice
         // Contains "type" and "sdp" fields
         public OSDMap Answer { get; set; }
 
+        public int SpatialPosition { get; private set; } = 50;
+        public int SpatialPositionFrontBack { get; private set; } = 100;
+        public string SpatialAudioPositionPreset { get; private set; } = "front";
+
         private int _disconnectStarted;
         public string DisconnectReason { get; private set; }
         private readonly SemaphoreSlim _provisionLock = new SemaphoreSlim(1, 1);
@@ -94,6 +99,76 @@ namespace WebRtcVoice
                 return true;
             }
             return false;
+        }
+
+        public bool UpdateSpatialAudioFromRequest(OSDMap pRequest)
+        {
+            if (pRequest is null)
+                return false;
+
+            int newLeftRight = SpatialPosition;
+            int newFrontBack = SpatialPositionFrontBack;
+            string newPreset = SpatialAudioPositionPreset;
+            bool changed = false;
+
+            string preset = null;
+            if (pRequest.TryGetString("spatial_audio_position", out string spatialAudioPosition))
+                preset = spatialAudioPosition;
+            else if (pRequest.TryGetString("spatial_position_name", out string spatialPositionName))
+                preset = spatialPositionName;
+
+            if (!String.IsNullOrWhiteSpace(preset))
+            {
+                switch (preset.Trim().ToLowerInvariant())
+                {
+                    case "left":
+                        newLeftRight = 0;
+                        newFrontBack = 50;
+                        newPreset = "left";
+                        break;
+                    case "right":
+                        newLeftRight = 100;
+                        newFrontBack = 50;
+                        newPreset = "right";
+                        break;
+                    case "front":
+                        newLeftRight = 50;
+                        newFrontBack = 100;
+                        newPreset = "front";
+                        break;
+                    case "rear":
+                        newLeftRight = 50;
+                        newFrontBack = 0;
+                        newPreset = "rear";
+                        break;
+                    case "center":
+                        newLeftRight = 50;
+                        newFrontBack = 50;
+                        newPreset = "center";
+                        break;
+                }
+            }
+
+            if (pRequest.TryGetValue("spatial_position", out OSD spatialPosition))
+            {
+                newLeftRight = Math.Clamp(spatialPosition.AsInteger(), 0, 100);
+                newPreset = "custom";
+            }
+            if (pRequest.TryGetValue("spatial_position_fb", out OSD spatialPositionFb))
+            {
+                newFrontBack = Math.Clamp(spatialPositionFb.AsInteger(), 0, 100);
+                newPreset = "custom";
+            }
+
+            if (newLeftRight != SpatialPosition || newFrontBack != SpatialPositionFrontBack || newPreset != SpatialAudioPositionPreset)
+            {
+                SpatialPosition = newLeftRight;
+                SpatialPositionFrontBack = newFrontBack;
+                SpatialAudioPositionPreset = newPreset;
+                changed = true;
+            }
+
+            return changed;
         }
 
         // Send the messages to the voice service to try and get rid of the session

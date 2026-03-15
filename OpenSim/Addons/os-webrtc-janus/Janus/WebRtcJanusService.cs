@@ -296,6 +296,26 @@ namespace WebRtcVoice
             }
         }   
 
+        private static bool HasSpatialAudioUpdate(OSDMap pRequest)
+        {
+            return pRequest is not null &&
+                (pRequest.ContainsKey("spatial_audio_position") ||
+                 pRequest.ContainsKey("spatial_position_name") ||
+                 pRequest.ContainsKey("spatial_position") ||
+                 pRequest.ContainsKey("spatial_position_fb"));
+        }
+
+        private static OSDMap BuildSpatialAudioResponse(JanusViewerSession pViewerSession)
+        {
+            return new OSDMap
+            {
+                { "response", "success" },
+                { "spatial_audio_position", pViewerSession.SpatialAudioPositionPreset },
+                { "spatial_position", pViewerSession.SpatialPosition },
+                { "spatial_position_fb", pViewerSession.SpatialPositionFrontBack }
+            };
+        }
+
         // The pRequest parameter is a straight conversion of the JSON request from the client.
         // This is the logic that takes the client's request and converts it into
         //     operations on rooms in the audio bridge.
@@ -309,6 +329,7 @@ namespace WebRtcVoice
             if (viewerSession is not null)
             {
                 _log.DebugFormat("{0} ProvisionVoiceAccountRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                viewerSession.UpdateSpatialAudioFromRequest(pRequest);
                 if (viewerSession.Session is null)
                 {
                     // This is a new session so we must create a new session and handle to the audio bridge
@@ -404,7 +425,10 @@ namespace WebRtcVoice
                                     ret = new OSDMap
                                     {
                                         { "jsep", viewerSession.Answer },
-                                        { "viewer_session", viewerSession.ViewerSessionID }
+                                        { "viewer_session", viewerSession.ViewerSessionID },
+                                        { "spatial_audio_position", viewerSession.SpatialAudioPositionPreset },
+                                        { "spatial_position", viewerSession.SpatialPosition },
+                                        { "spatial_position_fb", viewerSession.SpatialPositionFrontBack }
                                     };
                                 }
                             }
@@ -466,6 +490,29 @@ namespace WebRtcVoice
             if (viewerSession is not null)
             {
                 _log.DebugFormat("{0} VoiceSignalingRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                bool hasSpatialUpdate = HasSpatialAudioUpdate(pRequest);
+                bool spatialChanged = viewerSession.UpdateSpatialAudioFromRequest(pRequest);
+
+                if (hasSpatialUpdate && spatialChanged)
+                {
+                    bool spatialUpdated = viewerSession.Room is not null && await viewerSession.Room.ConfigureSpatialAudio(viewerSession);
+                    bool hasCandidates = pRequest.ContainsKey("candidate") || pRequest.ContainsKey("candidates");
+                    if (!hasCandidates)
+                    {
+                        ret = spatialUpdated
+                            ? BuildSpatialAudioResponse(viewerSession)
+                            : new OSDMap { { "response", "error" }, { "error", "spatial configure failed" } };
+                        _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                        return ret;
+                    }
+                }
+                else if (hasSpatialUpdate && !pRequest.ContainsKey("candidate") && !pRequest.ContainsKey("candidates"))
+                {
+                    ret = BuildSpatialAudioResponse(viewerSession);
+                    _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                    return ret;
+                }
+
                 // The request should be an array of candidates
                 if (pRequest.ContainsKey("candidate") && pRequest["candidate"] is OSDMap candidate)
                 {
@@ -767,9 +814,9 @@ namespace WebRtcVoice
                                                 ? JanusMessage.OSDToLong(participantIdNode)
                                                 : 0L;
                                         string mapping = BuildParticipantMapping(participantId);
-                                        MainConsole.Instance.Output("      {0}/{1},muted={2},talking={3},pos={4} {5}",
+                                        MainConsole.Instance.Output("      {0}/{1},muted={2},talking={3},pos={4},fb={5} {6}",
                                             participantId, participant["display"], participant["muted"],
-                                            participant["talking"], participant["spatial_position"],
+                                            participant["talking"], participant["spatial_position"], participant["spatial_position_fb"],
                                             String.IsNullOrEmpty(mapping) ? "mapped=<none>" : mapping.Substring(2));
                                     }
                                 }
@@ -916,12 +963,13 @@ namespace WebRtcVoice
                         ? JanusMessage.OSDToLong(participantIdNode)
                         : 0L;
                 string mapping = BuildParticipantMapping(participantId);
-                WriteOut("    - {0}/{1}, muted={2}, talking={3}, pos={4}{5}",
+                WriteOut("    - {0}/{1}, muted={2}, talking={3}, pos={4}, fb={5}{6}",
                     participantId,
                     GetMapString(participant, "display"),
                     GetMapString(participant, "muted"),
                     GetMapString(participant, "talking"),
                     GetMapString(participant, "spatial_position"),
+                    GetMapString(participant, "spatial_position_fb"),
                     mapping);
             }
         }

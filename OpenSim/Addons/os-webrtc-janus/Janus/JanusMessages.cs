@@ -562,6 +562,12 @@ namespace WebRtcVoice
                                             })
         {
         }
+
+		public void SetSpatialPosition(int pLeftRight, int pFrontBack)
+		{
+			AddIntToBody("spatial_position", pLeftRight);
+			AddIntToBody("spatial_position_fb", pFrontBack);
+		}
     }
     // A successful response contains the participant ID and the SDP
     public class AudioBridgeJoinRoomResp : AudioBridgeResp
@@ -574,12 +580,17 @@ namespace WebRtcVoice
     // ==============================================================
     public class AudioBridgeConfigRoomReq : PluginMsgReq
     {
-        // TODO:
-        public AudioBridgeConfigRoomReq(int pRoomId, string pSdp) : base(new OSDMap() {
+        public AudioBridgeConfigRoomReq() : base(new OSDMap() {
                                                 { "request", "configure" },
                                             })
         {
         }
+
+		public void SetSpatialPosition(int pLeftRight, int pFrontBack)
+		{
+			AddIntToBody("spatial_position", pLeftRight);
+			AddIntToBody("spatial_position_fb", pFrontBack);
+		}
     }
     public class AudioBridgeConfigRoomResp : AudioBridgeResp
     {
