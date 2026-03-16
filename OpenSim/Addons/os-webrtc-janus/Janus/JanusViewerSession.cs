@@ -72,6 +72,8 @@ namespace WebRtcVoice
         public int SpatialPosition { get; private set; } = 50;
         public int SpatialPositionFrontBack { get; private set; } = 100;
         public string SpatialAudioPositionPreset { get; private set; } = "front";
+        public bool ParticipantMuted { get; private set; } = false;
+        public int ParticipantVolumeGain { get; private set; } = 100;
 
         private int _disconnectStarted;
         public string DisconnectReason { get; private set; }
@@ -165,6 +167,43 @@ namespace WebRtcVoice
                 SpatialPosition = newLeftRight;
                 SpatialPositionFrontBack = newFrontBack;
                 SpatialAudioPositionPreset = newPreset;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        public bool UpdateParticipantAudioFromRequest(OSDMap pRequest)
+        {
+            if (pRequest is null)
+                return false;
+
+            bool changed = false;
+            bool newMuted = ParticipantMuted;
+            int newVolumeGain = ParticipantVolumeGain;
+
+            if (pRequest.TryGetValue("muted", out OSD mutedOSD))
+            {
+                newMuted = mutedOSD.AsBoolean();
+            }
+            else if (pRequest.TryGetValue("mute", out OSD muteOSD))
+            {
+                newMuted = muteOSD.AsBoolean();
+            }
+
+            if (pRequest.TryGetValue("volume_gain", out OSD volumeGainOSD))
+            {
+                newVolumeGain = Math.Clamp(volumeGainOSD.AsInteger(), 0, 500);
+            }
+            else if (pRequest.TryGetValue("gain", out OSD gainOSD))
+            {
+                newVolumeGain = Math.Clamp(gainOSD.AsInteger(), 0, 500);
+            }
+
+            if (newMuted != ParticipantMuted || newVolumeGain != ParticipantVolumeGain)
+            {
+                ParticipantMuted = newMuted;
+                ParticipantVolumeGain = newVolumeGain;
                 changed = true;
             }
 

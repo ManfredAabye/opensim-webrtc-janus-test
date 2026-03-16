@@ -209,6 +209,52 @@ namespace WebRtcVoice
             return false;
         }
 
+        public async Task<bool> ConfigureParticipantAudio(JanusViewerSession pVSession)
+        {
+            if (pVSession is null || pVSession.ParticipantId <= 0)
+                return false;
+
+            try
+            {
+                AudioBridgeConfigRoomReq req = new AudioBridgeConfigRoomReq();
+                req.SetMuted(pVSession.ParticipantMuted);
+                req.SetVolumeGain(pVSession.ParticipantVolumeGain);
+                JanusMessageResp resp = await _AudioBridge.SendPluginMsg(req);
+                if (resp is null)
+                    return false;
+
+                AudioBridgeResp abResp = new AudioBridgeResp(resp);
+                string returnCode = abResp.AudioBridgeReturnCode;
+                string janusReturnCode = resp.ReturnCode;
+                int errorCode = abResp.AudioBridgeErrorCode;
+
+                if (errorCode == 0 &&
+                    (abResp.isSuccess || returnCode == "event" || returnCode == "success" || janusReturnCode == "ack"))
+                {
+                    m_log.InfoFormat("{0} ConfigureParticipantAudio. Updated room {1}, participant={2}, muted={3}, gain={4}",
+                            LogHeader, RoomId, pVSession.ParticipantId, pVSession.ParticipantMuted, pVSession.ParticipantVolumeGain);
+                    return true;
+                }
+
+                bool benignJanusError = IsBenignJanusLeaveError(resp, out int janusErrorCode, out string janusErrorReason);
+                if (benignJanusError)
+                {
+                    m_log.InfoFormat("{0} ConfigureParticipantAudio. Treating stale Janus state as already gone for room {1}, participant={2} (janusErrorCode={3}, reason={4})",
+                            LogHeader, RoomId, pVSession.ParticipantId, janusErrorCode, janusErrorReason);
+                    return true;
+                }
+
+                m_log.ErrorFormat("{0} ConfigureParticipantAudio. Failed room {1}, participant={2}, janus={3}, audiobridge={4}, errorCode={5}",
+                        LogHeader, RoomId, pVSession.ParticipantId, janusReturnCode, returnCode, errorCode);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("{0} ConfigureParticipantAudio. Exception {1}", LogHeader, e);
+            }
+
+            return false;
+        }
+
         private async Task<bool> RecoverAlreadyInRoomAndLeave(string pDisplay)
         {
             try

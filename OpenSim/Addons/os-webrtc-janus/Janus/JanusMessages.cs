@@ -591,6 +591,16 @@ namespace WebRtcVoice
 			AddIntToBody("spatial_position", pLeftRight);
 			AddIntToBody("spatial_position_fb", pFrontBack);
 		}
+
+        public void SetMuted(bool pMuted)
+        {
+            AddBoolToBody("muted", pMuted);
+        }
+
+        public void SetVolumeGain(int pVolumeGain)
+        {
+            AddIntToBody("volume", pVolumeGain);
+        }
     }
     public class AudioBridgeConfigRoomResp : AudioBridgeResp
     {

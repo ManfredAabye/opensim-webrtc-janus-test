@@ -305,6 +305,15 @@ namespace WebRtcVoice
                  pRequest.ContainsKey("spatial_position_fb"));
         }
 
+        private static bool HasParticipantAudioUpdate(OSDMap pRequest)
+        {
+            return pRequest is not null &&
+                (pRequest.ContainsKey("muted") ||
+                 pRequest.ContainsKey("mute") ||
+                 pRequest.ContainsKey("volume_gain") ||
+                 pRequest.ContainsKey("gain"));
+        }
+
         private static OSDMap BuildSpatialAudioResponse(JanusViewerSession pViewerSession)
         {
             return new OSDMap
@@ -312,7 +321,9 @@ namespace WebRtcVoice
                 { "response", "success" },
                 { "spatial_audio_position", pViewerSession.SpatialAudioPositionPreset },
                 { "spatial_position", pViewerSession.SpatialPosition },
-                { "spatial_position_fb", pViewerSession.SpatialPositionFrontBack }
+                { "spatial_position_fb", pViewerSession.SpatialPositionFrontBack },
+                { "muted", pViewerSession.ParticipantMuted },
+                { "volume_gain", pViewerSession.ParticipantVolumeGain }
             };
         }
 
@@ -330,6 +341,8 @@ namespace WebRtcVoice
             {
                 _log.DebugFormat("{0} ProvisionVoiceAccountRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
                 viewerSession.UpdateSpatialAudioFromRequest(pRequest);
+                bool hasParticipantAudioUpdate = HasParticipantAudioUpdate(pRequest);
+                bool participantAudioChanged = viewerSession.UpdateParticipantAudioFromRequest(pRequest);
                 if (viewerSession.Session is null)
                 {
                     // This is a new session so we must create a new session and handle to the audio bridge
@@ -420,6 +433,15 @@ namespace WebRtcVoice
                                 else
                                 {
                                     viewerSession.RegionId = pSceneID;
+                                    if (hasParticipantAudioUpdate && participantAudioChanged)
+                                    {
+                                        bool participantAudioUpdated = await viewerSession.Room.ConfigureParticipantAudio(viewerSession);
+                                        if (!participantAudioUpdated)
+                                        {
+                                            _log.WarnFormat("{0} ProvisionVoiceAccountRequest: participant audio configure failed after join. agent={1}, scene={2}, room={3}, participant={4}",
+                                                    LogHeader, pUserID, pSceneID, viewerSession.Room.RoomId, viewerSession.ParticipantId);
+                                        }
+                                    }
                                     _log.InfoFormat("{0} ProvisionVoiceAccountRequest: connected. agent={1}, scene={2}, room={3}, participant={4}, viewer_session={5}",
                                             LogHeader, pUserID, pSceneID, viewerSession.Room.RoomId, viewerSession.ParticipantId, viewerSession.ViewerSessionID);
                                     ret = new OSDMap
@@ -428,7 +450,9 @@ namespace WebRtcVoice
                                         { "viewer_session", viewerSession.ViewerSessionID },
                                         { "spatial_audio_position", viewerSession.SpatialAudioPositionPreset },
                                         { "spatial_position", viewerSession.SpatialPosition },
-                                        { "spatial_position_fb", viewerSession.SpatialPositionFrontBack }
+                                        { "spatial_position_fb", viewerSession.SpatialPositionFrontBack },
+                                        { "muted", viewerSession.ParticipantMuted },
+                                        { "volume_gain", viewerSession.ParticipantVolumeGain }
                                     };
                                 }
                             }
@@ -492,6 +516,28 @@ namespace WebRtcVoice
                 _log.DebugFormat("{0} VoiceSignalingRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
                 bool hasSpatialUpdate = HasSpatialAudioUpdate(pRequest);
                 bool spatialChanged = viewerSession.UpdateSpatialAudioFromRequest(pRequest);
+                bool hasParticipantAudioUpdate = HasParticipantAudioUpdate(pRequest);
+                bool participantAudioChanged = viewerSession.UpdateParticipantAudioFromRequest(pRequest);
+
+                if (hasParticipantAudioUpdate && participantAudioChanged)
+                {
+                    bool participantAudioUpdated = viewerSession.Room is not null && await viewerSession.Room.ConfigureParticipantAudio(viewerSession);
+                    bool hasCandidates = pRequest.ContainsKey("candidate") || pRequest.ContainsKey("candidates");
+                    if (!hasCandidates && !hasSpatialUpdate)
+                    {
+                        ret = participantAudioUpdated
+                            ? BuildSpatialAudioResponse(viewerSession)
+                            : new OSDMap { { "response", "error" }, { "error", "participant audio configure failed" } };
+                        _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                        return ret;
+                    }
+                }
+                else if (hasParticipantAudioUpdate && !pRequest.ContainsKey("candidate") && !pRequest.ContainsKey("candidates") && !hasSpatialUpdate)
+                {
+                    ret = BuildSpatialAudioResponse(viewerSession);
+                    _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
+                    return ret;
+                }
 
                 if (hasSpatialUpdate && spatialChanged)
                 {
