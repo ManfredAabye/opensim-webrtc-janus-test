@@ -15,4 +15,4 @@
     ; Plugin package to attach in Janus. Upstream default:
     ; JanusAudioBridgePlugin = janus.plugin.audiobridge
     ; OpenSim custom plugin (if compatible):
-    ; JanusAudioBridgePlugin = janus.plugin.opensim.audiobridge
+    JanusAudioBridgePlugin = janus.plugin.opensim.audiobridge

@@ -106,7 +106,13 @@ namespace WebRtcVoice
                 }
                 else
                 {
-                    m_log.ErrorFormat("{0} Activate: failed to attach to plugin {1}", LogHeader, PluginName);
+                    ErrorResp eResp = resp is not null ? new ErrorResp(resp) : null;
+                    int errorCode = eResp?.errorCode ?? 0;
+                    string errorReason = eResp?.errorReason ?? String.Empty;
+                    string returnCode = resp?.ReturnCode ?? "<null>";
+                    string raw = resp?.RawBody?.ToString() ?? "<null>";
+                    m_log.ErrorFormat("{0} Activate: failed to attach to plugin {1}. janus={2}, errorCode={3}, errorReason={4}, raw={5}",
+                            LogHeader, PluginName, returnCode, errorCode, errorReason, raw);
                 }
             }
             catch (Exception e)
