@@ -197,10 +197,17 @@ namespace WebRtcVoice
         // Called by OpenSim when an avatar moves to a significantly different position.
         // We forward the new position to the Janus AudioBridge so it can update its
         // internal 3D-audio mixing for spatial (local) voice rooms.
-        private void Event_OnSignificantClientMovement(UUID agentID)
+        private void Event_OnSignificantClientMovement(ScenePresence avatar)
         {
             if (!m_Enabled || m_spatialVoiceService is null)
                 return;
+
+            if (avatar is null || avatar.IsChildAgent || avatar.IsDeleted)
+                return;
+
+            UUID agentID = avatar.UUID;
+            UUID sceneID = avatar.Scene.RegionInfo.RegionID;
+            Vector3 pos = avatar.AbsolutePosition;
 
             // Find all spatial viewer sessions for this agent to determine the relevant scene(s).
             if (!VoiceViewerSession.TryGetViewerSessionByAgentId(agentID,
@@ -209,21 +216,9 @@ namespace WebRtcVoice
 
             foreach (var kvp in vSessions.ToList())
             {
-                UUID sceneID = kvp.Value.RegionId;
-                if (sceneID == UUID.Zero) continue;
-
-                Scene scene;
-                lock (_scenes)
-                {
-                    if (!_scenes.TryGetValue(sceneID, out scene))
-                        continue;
-                }
-
-                if (!scene.TryGetScenePresence(agentID, out ScenePresence sp)
-                        || sp.IsChildAgent || sp.IsDeleted)
+                if (kvp.Value.RegionId != sceneID)
                     continue;
 
-                Vector3 pos = sp.AbsolutePosition;
                 _ = Task.Run(async () =>
                 {
                     try { await m_spatialVoiceService.UpdateSpeakerPosition(agentID, sceneID, pos); }
