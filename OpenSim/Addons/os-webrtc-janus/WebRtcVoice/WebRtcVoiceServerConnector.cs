@@ -94,6 +94,7 @@ namespace WebRtcVoice
                     // Now that we have someone to handle the requests, we can set up the handlers
                     pServer.AddJsonRPCHandler("provision_voice_account_request", Handle_ProvisionVoiceAccountRequest);
                     pServer.AddJsonRPCHandler("voice_signaling_request", Handle_VoiceSignalingRequest);
+                    pServer.AddJsonRPCHandler("update_speaker_position", Handle_UpdateSpeakerPosition);
                 }
             }
         }
@@ -166,6 +167,48 @@ namespace WebRtcVoice
             else
             {
                 m_log.ErrorFormat("{0} VSR: missing parameters", LogHeader);
+            }
+
+            return ret;
+        }
+
+        private bool Handle_UpdateSpeakerPosition(OSDMap pJson, ref JsonRpcResponse pResponse)
+        {
+            bool ret = false;
+            if (pJson.ContainsKey("params") && pJson["params"] is OSDMap paramsMap)
+            {
+                UUID userID = paramsMap.ContainsKey("userID") ? paramsMap["userID"].AsUUID() : UUID.Zero;
+                UUID sceneID = paramsMap.ContainsKey("scene") ? paramsMap["scene"].AsUUID() : UUID.Zero;
+
+                float x = 0f;
+                float y = 0f;
+                float z = 0f;
+                if (paramsMap.ContainsKey("position") && paramsMap["position"] is OSDMap posMap)
+                {
+                    x = (float)(posMap.ContainsKey("x") ? posMap["x"].AsReal() : 0.0);
+                    y = (float)(posMap.ContainsKey("y") ? posMap["y"].AsReal() : 0.0);
+                    z = (float)(posMap.ContainsKey("z") ? posMap["z"].AsReal() : 0.0);
+                }
+
+                try
+                {
+                    m_WebRtcVoiceService.UpdateSpeakerPosition(userID, sceneID, new Vector3(x, y, z)).GetAwaiter().GetResult();
+
+                    pResponse = new JsonRpcResponse();
+                    pResponse.Result = new OSDMap()
+                    {
+                        { "response", "ok" }
+                    };
+                    ret = true;
+                }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("{0} USP: exception {1}", LogHeader, e);
+                }
+            }
+            else
+            {
+                m_log.ErrorFormat("{0} USP: missing parameters", LogHeader);
             }
 
             return ret;

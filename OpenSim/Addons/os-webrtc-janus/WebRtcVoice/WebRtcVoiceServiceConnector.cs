@@ -138,11 +138,28 @@ namespace WebRtcVoice
             return JsonRpcRequest("voice_signaling_request", m_serverURI, req);
         }
 
-        // UpdateSpeakerPosition: in remote/Robust mode spatial position updates are not
-        // forwarded over JSON-RPC (the Robust server's session registry is separate).
-        public Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position)
+        // Forward speaker position updates to Robust so spatial AudioBridge mix can be updated.
+        public async Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position)
         {
-            return Task.CompletedTask;
+            OSDMap req = new OSDMap()
+            {
+                { "userID", agentID.ToString() },
+                { "scene", sceneID.ToString() },
+                { "position", new OSDMap()
+                    {
+                        { "x", OSD.FromReal(position.X) },
+                        { "y", OSD.FromReal(position.Y) },
+                        { "z", OSD.FromReal(position.Z) }
+                    }
+                }
+            };
+
+            var resp = await JsonRpcRequest("update_speaker_position", m_serverURI, req);
+            if (resp is not null && resp.ContainsKey("error"))
+            {
+                m_log.WarnFormat("{0} UpdateSpeakerPosition failed for agent={1}, scene={2}: {3}",
+                    LogHeader, agentID, sceneID, resp["error"].AsString());
+            }
         }
 
         public Task<OSDMap> JsonRpcRequest(string method, string uri, OSDMap pParams)
