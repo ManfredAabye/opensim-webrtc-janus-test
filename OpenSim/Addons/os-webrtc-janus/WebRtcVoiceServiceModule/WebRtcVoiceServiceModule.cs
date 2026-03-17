@@ -70,6 +70,9 @@ namespace WebRtcVoice
         private IWebRtcVoiceService m_spatialVoiceService;
         private IWebRtcVoiceService m_nonSpatialVoiceService;
 
+        // Scenes tracked so we can look up ScenePresence for position updates
+        private readonly Dictionary<UUID, Scene> _scenes = new Dictionary<UUID, Scene>();
+
         // =====================================================================
 
         // ISharedRegionModule.Initialize
@@ -163,20 +166,12 @@ namespace WebRtcVoice
             if (m_Enabled)
             {
                 m_log.DebugFormat("{0} Adding WebRtcVoiceService to region {1}", LogHeader, scene.Name);
+                lock (_scenes)
+                    _scenes[scene.RegionInfo.RegionID] = scene;
                 scene.RegisterModuleInterface<IWebRtcVoiceService>(this);
 
-                // TODO: figure out what events we care about
-                // When new client (child or root) is added to scene, before OnClientLogin
-                // scene.EventManager.OnNewClient         += Event_OnNewClient;
-                // When client is added on login.
-                // scene.EventManager.OnClientLogin       += Event_OnClientLogin;
-                // New presence is added to scene. Child, root, and NPC. See Scene.AddNewAgent()
-                // scene.EventManager.OnNewPresence       += Event_OnNewPresence;
-                // scene.EventManager.OnRemovePresence    += Event_OnRemovePresence;
-                // update to client position (either this or 'significant')
-                // scene.EventManager.OnClientMovement    += Event_OnClientMovement;
-                // "significant" update to client position
-                // scene.EventManager.OnSignificantClientMovement += Event_OnSignificantClientMovement;
+                // Hook significant movement to push spatial position updates to Janus AudioBridge
+                scene.EventManager.OnSignificantClientMovement += Event_OnSignificantClientMovement;
             }
 
         }
@@ -186,6 +181,9 @@ namespace WebRtcVoice
         {
             if (m_Enabled)
             {
+                lock (_scenes)
+                    _scenes.Remove(scene.RegionInfo.RegionID);
+                scene.EventManager.OnSignificantClientMovement -= Event_OnSignificantClientMovement;
                 scene.UnregisterModuleInterface<IWebRtcVoiceService>(this);
             }
         }
@@ -196,6 +194,48 @@ namespace WebRtcVoice
         }
 
         // =====================================================================
+        // Called by OpenSim when an avatar moves to a significantly different position.
+        // We forward the new position to the Janus AudioBridge so it can update its
+        // internal 3D-audio mixing for spatial (local) voice rooms.
+        private void Event_OnSignificantClientMovement(UUID agentID)
+        {
+            if (!m_Enabled || m_spatialVoiceService is null)
+                return;
+
+            // Find all spatial viewer sessions for this agent to determine the relevant scene(s).
+            if (!VoiceViewerSession.TryGetViewerSessionByAgentId(agentID,
+                    out IEnumerable<KeyValuePair<string, IVoiceViewerSession>> vSessions))
+                return;
+
+            foreach (var kvp in vSessions.ToList())
+            {
+                UUID sceneID = kvp.Value.RegionId;
+                if (sceneID == UUID.Zero) continue;
+
+                Scene scene;
+                lock (_scenes)
+                {
+                    if (!_scenes.TryGetValue(sceneID, out scene))
+                        continue;
+                }
+
+                if (!scene.TryGetScenePresence(agentID, out ScenePresence sp)
+                        || sp.IsChildAgent || sp.IsDeleted)
+                    continue;
+
+                Vector3 pos = sp.AbsolutePosition;
+                _ = Task.Run(async () =>
+                {
+                    try { await m_spatialVoiceService.UpdateSpeakerPosition(agentID, sceneID, pos); }
+                    catch (Exception ex)
+                    {
+                        m_log.WarnFormat("{0} Event_OnSignificantClientMovement: UpdateSpeakerPosition failed for agent {1}: {2}",
+                                LogHeader, agentID, ex.Message);
+                    }
+                });
+            }
+        }
+
         // Thought about doing this but currently relying on the voice service
         //     event ("hangup") to remove the viewer session.
         private void Event_OnRemovePresence(UUID pAgentID)
@@ -452,6 +492,25 @@ namespace WebRtcVoice
         public IVoiceViewerSession CreateViewerSession(OSDMap pRequest, UUID pUserID, UUID pSceneID)
         {
             throw new NotImplementedException();
+        }
+
+        // Dispatch a speaker-position update to the spatial voice service.
+        // Called both from the movement event handler and from the region module after provision.
+        // IWebRtcVoiceService.UpdateSpeakerPosition
+        public async Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position)
+        {
+            if (m_spatialVoiceService is not null)
+            {
+                try
+                {
+                    await m_spatialVoiceService.UpdateSpeakerPosition(agentID, sceneID, position);
+                }
+                catch (Exception ex)
+                {
+                    m_log.WarnFormat("{0} UpdateSpeakerPosition failed for agent {1}: {2}",
+                            LogHeader, agentID, ex.Message);
+                }
+            }
         }
     }
 }

@@ -138,6 +138,13 @@ namespace WebRtcVoice
             return JsonRpcRequest("voice_signaling_request", m_serverURI, req);
         }
 
+        // UpdateSpeakerPosition: in remote/Robust mode spatial position updates are not
+        // forwarded over JSON-RPC (the Robust server's session registry is separate).
+        public Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position)
+        {
+            return Task.CompletedTask;
+        }
+
         public Task<OSDMap> JsonRpcRequest(string method, string uri, OSDMap pParams)
         {
             string jsonId = UUID.Random().ToString();

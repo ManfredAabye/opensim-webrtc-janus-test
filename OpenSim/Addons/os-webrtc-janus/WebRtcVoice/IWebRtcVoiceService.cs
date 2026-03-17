@@ -54,5 +54,9 @@ namespace WebRtcVoice
 
         // Create a viewer session with all the variables needed for the underlying implementation
         public IVoiceViewerSession CreateViewerSession(OSDMap pRequest, UUID pUserID, UUID pScene);
+
+        // Update the 3D spatial position of the speaker identified by agentID in the given scene/region.
+        // Called after an avatar moves so that the voice engine can apply distance-based attenuation.
+        public Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position);
     }
 }

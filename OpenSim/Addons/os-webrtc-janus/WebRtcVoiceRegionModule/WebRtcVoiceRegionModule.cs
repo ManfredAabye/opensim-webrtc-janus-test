@@ -32,6 +32,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Reflection;
 
 using Mono.Addins;
@@ -322,6 +323,22 @@ namespace WebRtcVoice
 
             // The checks passed. Send the request to the voice service.
             OSDMap resp = voiceService.ProvisionVoiceAccountRequest(map, agentID, scene.RegionInfo.RegionID).GetAwaiter().GetResult();
+
+            // After a successful provision (viewer session established + Janus room joined),
+            // push the avatar's current position so Janus can initialise 3D spatial mixing
+            // immediately instead of waiting for the first significant-movement event.
+            if (resp is not null && resp.ContainsKey("viewer_session")
+                    && scene.TryGetScenePresence(agentID, out ScenePresence sp2)
+                    && !sp2.IsChildAgent && !sp2.IsDeleted)
+            {
+                Vector3 initialPos = sp2.AbsolutePosition;
+                UUID initialSceneID = scene.RegionInfo.RegionID;
+                _ = Task.Run(async () =>
+                {
+                    try { await voiceService.UpdateSpeakerPosition(agentID, initialSceneID, initialPos); }
+                    catch { /* best-effort; position will be corrected on next movement */ }
+                });
+            }
 
             if (_MessageDetails) m_log.DebugFormat("{0}[ProvisionVoice]: response: {1}", logHeader, resp.ToString());
 

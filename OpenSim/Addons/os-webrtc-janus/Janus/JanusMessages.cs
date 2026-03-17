@@ -562,12 +562,6 @@ namespace WebRtcVoice
                                             })
         {
         }
-
-		public void SetSpatialPosition(int pLeftRight, int pFrontBack)
-		{
-			AddIntToBody("spatial_position", pLeftRight);
-			AddIntToBody("spatial_position_fb", pFrontBack);
-		}
     }
     // A successful response contains the participant ID and the SDP
     public class AudioBridgeJoinRoomResp : AudioBridgeResp
@@ -578,34 +572,28 @@ namespace WebRtcVoice
         public long ParticipantId { get { return PluginRespDataLong("id"); } }
     }
     // ==============================================================
-    public class AudioBridgeConfigRoomReq : PluginMsgReq
+    // Configure request to update the spatial position of a participant in the AudioBridge room.
+    // Janus AudioBridge expects: {"request":"configure","spatial_position":{"x":X,"y":Y,"z":Z}}
+    // The room must have been created with spatial_audio=true for this to have any effect.
+    public class AudioBridgeConfigSpatialPositionReq : PluginMsgReq
     {
-        public AudioBridgeConfigRoomReq() : base(new OSDMap() {
-                                                { "request", "configure" },
-                                            })
+        public AudioBridgeConfigSpatialPositionReq(float x, float y, float z) : base(new OSDMap()
+            {
+                { "request", "configure" },
+                { "spatial_position", new OSDMap()
+                    {
+                        { "x", OSD.FromReal(x) },
+                        { "y", OSD.FromReal(y) },
+                        { "z", OSD.FromReal(z) }
+                    }
+                }
+            })
         {
-        }
-
-		public void SetSpatialPosition(int pLeftRight, int pFrontBack)
-		{
-			AddIntToBody("spatial_position", pLeftRight);
-			AddIntToBody("spatial_position_fb", pFrontBack);
-		}
-
-        public void SetMuted(bool pMuted)
-        {
-            AddBoolToBody("muted", pMuted);
-        }
-
-        public void SetVolumeGain(int pVolumeGain)
-        {
-            AddIntToBody("volume", pVolumeGain);
         }
     }
-    public class AudioBridgeConfigRoomResp : AudioBridgeResp
+    public class AudioBridgeConfigSpatialPositionResp : AudioBridgeResp
     {
-        // TODO:
-        public AudioBridgeConfigRoomResp(JanusMessageResp pResp) : base(pResp)
+        public AudioBridgeConfigSpatialPositionResp(JanusMessageResp pResp) : base(pResp)
         {
         }
     }

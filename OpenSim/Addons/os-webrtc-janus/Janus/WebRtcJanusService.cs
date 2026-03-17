@@ -28,6 +28,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -121,14 +122,8 @@ namespace WebRtcVoice
                     if (_Enabled)
                     {
                         _log.DebugFormat("{0} Enabled", LogHeader);
-                        if (!StartConnectionToJanus())
-                        {
-                            _log.ErrorFormat("{0} failed connection to Janus Gateway. Disabled", LogHeader);
-                            _Enabled = false;
-                            return;
-                        }
+                        StartConnectionToJanus();
                         RegisterConsoleCommands();
-                        _log.InfoFormat("{0} Enabled", LogHeader);
                     }
                 }
                 else
@@ -144,18 +139,21 @@ namespace WebRtcVoice
             }
         }
 
-        // Start the initial connection to the Janus server.
+        // Start a thread to do the connection to the Janus server.
         // Here an initial session is created and then a handle to the audio bridge plugin
         //    is created for the console commands. Since webrtc PeerConnections that are created
         //    my Janus are per-session, the other sessions will be created by the viewer requests.
-        private bool StartConnectionToJanus()
+        private void StartConnectionToJanus()
         {
             _log.DebugFormat("{0} StartConnectionToJanus", LogHeader);
-            _ViewerSession = new JanusViewerSession(this);
-            return ConnectToSessionAndAudioBridge(_ViewerSession).GetAwaiter().GetResult();
+            Task.Run(async () =>
+            {
+                _ViewerSession = new JanusViewerSession(this);
+                await ConnectToSessionAndAudioBridge(_ViewerSession);
+            });
         }
 
-        private async Task<bool> ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
+        private async Task ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
         {
             JanusSession janusSession = new JanusSession(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _JanusDebug, _MessageDetails);
             if (await janusSession.CreateSession())
@@ -177,24 +175,16 @@ namespace WebRtcVoice
                 {
                     _log.DebugFormat("{0} AudioBridgePluginHandle created", LogHeader);
                     // Requests through the capabilities will create rooms
-                    return true;
                 }
                 else
                 {
                     _log.ErrorFormat("{0} JanusPluginHandle not created", LogHeader);
-                    await janusSession.DestroySession();
-                    janusSession.Dispose();
                 }
             }
             else
             {
                 _log.ErrorFormat("{0} JanusSession not created", LogHeader);
-            }
-
-            pViewerSession.Session = null;
-            pViewerSession.AudioBridge = null;
-            pViewerSession.VoiceServiceSessionId = null;
-            return false;
+            }   
         }
 
         private void Handle_Hangup(EventResp pResp)
@@ -296,37 +286,6 @@ namespace WebRtcVoice
             }
         }   
 
-        private static bool HasSpatialAudioUpdate(OSDMap pRequest)
-        {
-            return pRequest is not null &&
-                (pRequest.ContainsKey("spatial_audio_position") ||
-                 pRequest.ContainsKey("spatial_position_name") ||
-                 pRequest.ContainsKey("spatial_position") ||
-                 pRequest.ContainsKey("spatial_position_fb"));
-        }
-
-        private static bool HasParticipantAudioUpdate(OSDMap pRequest)
-        {
-            return pRequest is not null &&
-                (pRequest.ContainsKey("muted") ||
-                 pRequest.ContainsKey("mute") ||
-                 pRequest.ContainsKey("volume_gain") ||
-                 pRequest.ContainsKey("gain"));
-        }
-
-        private static OSDMap BuildSpatialAudioResponse(JanusViewerSession pViewerSession)
-        {
-            return new OSDMap
-            {
-                { "response", "success" },
-                { "spatial_audio_position", pViewerSession.SpatialAudioPositionPreset },
-                { "spatial_position", pViewerSession.SpatialPosition },
-                { "spatial_position_fb", pViewerSession.SpatialPositionFrontBack },
-                { "muted", pViewerSession.ParticipantMuted },
-                { "volume_gain", pViewerSession.ParticipantVolumeGain }
-            };
-        }
-
         // The pRequest parameter is a straight conversion of the JSON request from the client.
         // This is the logic that takes the client's request and converts it into
         //     operations on rooms in the audio bridge.
@@ -340,23 +299,10 @@ namespace WebRtcVoice
             if (viewerSession is not null)
             {
                 _log.DebugFormat("{0} ProvisionVoiceAccountRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                viewerSession.UpdateSpatialAudioFromRequest(pRequest);
-                bool hasParticipantAudioUpdate = HasParticipantAudioUpdate(pRequest);
-                bool participantAudioChanged = viewerSession.UpdateParticipantAudioFromRequest(pRequest);
                 if (viewerSession.Session is null)
                 {
                     // This is a new session so we must create a new session and handle to the audio bridge
-                    if (!await ConnectToSessionAndAudioBridge(viewerSession))
-                    {
-                        errorMsg = "janus connection failed";
-                        _log.ErrorFormat("{0} ProvisionVoiceAccountRequest: failed to initialize Janus session", LogHeader);
-                        ret = new OSDMap
-                        {
-                            { "response", "failed" },
-                            { "error", errorMsg }
-                        };
-                        return ret;
-                    }
+                    await ConnectToSessionAndAudioBridge(viewerSession);
                 }
 
                 // TODO: need to keep count of users in a room to know when to close a room
@@ -433,26 +379,12 @@ namespace WebRtcVoice
                                 else
                                 {
                                     viewerSession.RegionId = pSceneID;
-                                    if (hasParticipantAudioUpdate && participantAudioChanged)
-                                    {
-                                        bool participantAudioUpdated = await viewerSession.Room.ConfigureParticipantAudio(viewerSession);
-                                        if (!participantAudioUpdated)
-                                        {
-                                            _log.WarnFormat("{0} ProvisionVoiceAccountRequest: participant audio configure failed after join. agent={1}, scene={2}, room={3}, participant={4}",
-                                                    LogHeader, pUserID, pSceneID, viewerSession.Room.RoomId, viewerSession.ParticipantId);
-                                        }
-                                    }
                                     _log.InfoFormat("{0} ProvisionVoiceAccountRequest: connected. agent={1}, scene={2}, room={3}, participant={4}, viewer_session={5}",
                                             LogHeader, pUserID, pSceneID, viewerSession.Room.RoomId, viewerSession.ParticipantId, viewerSession.ViewerSessionID);
                                     ret = new OSDMap
                                     {
                                         { "jsep", viewerSession.Answer },
-                                        { "viewer_session", viewerSession.ViewerSessionID },
-                                        { "spatial_audio_position", viewerSession.SpatialAudioPositionPreset },
-                                        { "spatial_position", viewerSession.SpatialPosition },
-                                        { "spatial_position_fb", viewerSession.SpatialPositionFrontBack },
-                                        { "muted", viewerSession.ParticipantMuted },
-                                        { "volume_gain", viewerSession.ParticipantVolumeGain }
+                                        { "viewer_session", viewerSession.ViewerSessionID }
                                     };
                                 }
                             }
@@ -514,51 +446,6 @@ namespace WebRtcVoice
             if (viewerSession is not null)
             {
                 _log.DebugFormat("{0} VoiceSignalingRequest: begin ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                bool hasSpatialUpdate = HasSpatialAudioUpdate(pRequest);
-                bool spatialChanged = viewerSession.UpdateSpatialAudioFromRequest(pRequest);
-                bool hasParticipantAudioUpdate = HasParticipantAudioUpdate(pRequest);
-                bool participantAudioChanged = viewerSession.UpdateParticipantAudioFromRequest(pRequest);
-
-                if (hasParticipantAudioUpdate && participantAudioChanged)
-                {
-                    bool participantAudioUpdated = viewerSession.Room is not null && await viewerSession.Room.ConfigureParticipantAudio(viewerSession);
-                    bool hasCandidates = pRequest.ContainsKey("candidate") || pRequest.ContainsKey("candidates");
-                    if (!hasCandidates && !hasSpatialUpdate)
-                    {
-                        ret = participantAudioUpdated
-                            ? BuildSpatialAudioResponse(viewerSession)
-                            : new OSDMap { { "response", "error" }, { "error", "participant audio configure failed" } };
-                        _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                        return ret;
-                    }
-                }
-                else if (hasParticipantAudioUpdate && !pRequest.ContainsKey("candidate") && !pRequest.ContainsKey("candidates") && !hasSpatialUpdate)
-                {
-                    ret = BuildSpatialAudioResponse(viewerSession);
-                    _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                    return ret;
-                }
-
-                if (hasSpatialUpdate && spatialChanged)
-                {
-                    bool spatialUpdated = viewerSession.Room is not null && await viewerSession.Room.ConfigureSpatialAudio(viewerSession);
-                    bool hasCandidates = pRequest.ContainsKey("candidate") || pRequest.ContainsKey("candidates");
-                    if (!hasCandidates)
-                    {
-                        ret = spatialUpdated
-                            ? BuildSpatialAudioResponse(viewerSession)
-                            : new OSDMap { { "response", "error" }, { "error", "spatial configure failed" } };
-                        _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                        return ret;
-                    }
-                }
-                else if (hasSpatialUpdate && !pRequest.ContainsKey("candidate") && !pRequest.ContainsKey("candidates"))
-                {
-                    ret = BuildSpatialAudioResponse(viewerSession);
-                    _log.DebugFormat("{0} VoiceSignalingRequest: end ({1})", LogHeader, FlowTag(flowId, viewerSession));
-                    return ret;
-                }
-
                 // The request should be an array of candidates
                 if (pRequest.ContainsKey("candidate") && pRequest["candidate"] is OSDMap candidate)
                 {
@@ -654,6 +541,31 @@ namespace WebRtcVoice
                 AgentId = pUserID,
                 RegionId = pSceneID
             };
+        }
+
+        // Update the 3D spatial position of all active spatial voice sessions for the given avatar.
+        // Sends a Janus AudioBridge "configure" request with spatial_position for every matching session.
+        // Only sessions in spatial rooms (channel_type="local") have a meaningful position; non-spatial
+        // sessions ignore the configure body but the request is harmless.
+        // IWebRtcVoiceService.UpdateSpeakerPosition
+        public async Task UpdateSpeakerPosition(UUID agentID, UUID sceneID, Vector3 position)
+        {
+            if (!VoiceViewerSession.TryGetViewerSessionByAgentId(agentID,
+                    out IEnumerable<KeyValuePair<string, IVoiceViewerSession>> vSessions))
+                return;
+
+            var tasks = new List<Task>();
+            foreach (var kvp in vSessions.ToList())
+            {
+                if (kvp.Value.RegionId != sceneID) continue;
+                if (kvp.Value is not JanusViewerSession janusSession) continue;
+                if (janusSession.Room is null || janusSession.ParticipantId <= 0) continue;
+
+                tasks.Add(janusSession.Room.UpdateSpatialPosition(janusSession,
+                    position.X, position.Y, position.Z));
+            }
+            if (tasks.Count > 0)
+                await Task.WhenAll(tasks);
         }
 
         // ======================================================================================================
@@ -860,9 +772,9 @@ namespace WebRtcVoice
                                                 ? JanusMessage.OSDToLong(participantIdNode)
                                                 : 0L;
                                         string mapping = BuildParticipantMapping(participantId);
-                                        MainConsole.Instance.Output("      {0}/{1},muted={2},talking={3},pos={4},fb={5} {6}",
+                                        MainConsole.Instance.Output("      {0}/{1},muted={2},talking={3},pos={4} {5}",
                                             participantId, participant["display"], participant["muted"],
-                                            participant["talking"], participant["spatial_position"], participant["spatial_position_fb"],
+                                            participant["talking"], participant["spatial_position"],
                                             String.IsNullOrEmpty(mapping) ? "mapped=<none>" : mapping.Substring(2));
                                     }
                                 }
@@ -1009,13 +921,12 @@ namespace WebRtcVoice
                         ? JanusMessage.OSDToLong(participantIdNode)
                         : 0L;
                 string mapping = BuildParticipantMapping(participantId);
-                WriteOut("    - {0}/{1}, muted={2}, talking={3}, pos={4}, fb={5}{6}",
+                WriteOut("    - {0}/{1}, muted={2}, talking={3}, pos={4}{5}",
                     participantId,
                     GetMapString(participant, "display"),
                     GetMapString(participant, "muted"),
                     GetMapString(participant, "talking"),
                     GetMapString(participant, "spatial_position"),
-                    GetMapString(participant, "spatial_position_fb"),
                     mapping);
             }
         }

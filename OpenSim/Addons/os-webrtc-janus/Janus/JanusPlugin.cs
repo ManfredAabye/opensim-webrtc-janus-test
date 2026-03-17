@@ -72,20 +72,6 @@ namespace WebRtcVoice
             }
         }
 
-        private static bool IsBenignJanusDetachError(JanusMessageResp pResp, out int pJanusErrorCode, out string pJanusErrorReason)
-        {
-            pJanusErrorCode = 0;
-            pJanusErrorReason = String.Empty;
-            if (pResp is null || !pResp.isError)
-                return false;
-
-            ErrorResp errResp = new ErrorResp(pResp);
-            pJanusErrorCode = errResp.errorCode;
-            pJanusErrorReason = errResp.errorReason;
-
-            return pJanusErrorCode == 458 || pJanusErrorCode == 459;
-        }
-
         public Task<JanusMessageResp> SendPluginMsg(OSDMap pParams)
         {
             return _JanusSession.SendToJanus(new PluginMsgReq(pParams), PluginUri);
@@ -150,31 +136,9 @@ namespace WebRtcVoice
                     m_log.DebugFormat("{0} Detach. Detached", LogHeader);
                     ret = true;
                 }
-                else if (IsBenignJanusDetachError(resp, out int janusErrorCode, out string janusErrorReason))
-                {
-                    m_log.InfoFormat("{0} Detach. Treating stale Janus state as detached for plugin {1} (janusErrorCode={2}, reason={3})",
-                            LogHeader, PluginName, janusErrorCode, janusErrorReason);
-                    ret = true;
-                }
                 else
                 {
-                    if (resp is not null && resp.isError)
-                    {
-                        ErrorResp errResp = new ErrorResp(resp);
-                        m_log.ErrorFormat("{0} Detach: failed for plugin {1} (janusErrorCode={2}, reason={3})",
-                                LogHeader, PluginName, errResp.errorCode, errResp.errorReason);
-                    }
-                    else
-                    {
-                        m_log.ErrorFormat("{0} Detach: failed for plugin {1}", LogHeader, PluginName);
-                    }
-                }
-
-                if (ret)
-                {
-                    PluginId = null;
-                    PluginUri = null;
-                    _JanusSession.PluginId = null;
+                    m_log.ErrorFormat("{0} Detach: failed", LogHeader);
                 }
             }
             catch (Exception e)
