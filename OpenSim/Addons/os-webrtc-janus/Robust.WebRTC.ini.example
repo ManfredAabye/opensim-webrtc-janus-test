@@ -12,3 +12,7 @@
     APIToken = mypasswd
     JanusGatewayAdminURI = http://127.0.0.1:7088/admin
     AdminAPIToken = mypasswd
+    ; Plugin package to attach in Janus. Upstream default:
+    ; JanusAudioBridgePlugin = janus.plugin.audiobridge
+    ; OpenSim custom plugin (if compatible):
+    ; JanusAudioBridgePlugin = janus.plugin.opensim.audiobridge

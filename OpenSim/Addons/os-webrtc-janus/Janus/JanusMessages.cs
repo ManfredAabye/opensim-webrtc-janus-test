@@ -512,9 +512,16 @@ namespace WebRtcVoice
         public AudioBridgeResp(JanusMessageResp pResp) : base(pResp)
         {
         }
-        public override bool isSuccess { get { return PluginRespDataString("audiobridge") == "success"; } }
+        private string GetReturnCode()
+        {
+            string code = PluginRespDataString("audiobridge");
+            if (!String.IsNullOrEmpty(code))
+                return code;
+            return PluginRespDataString("opensim_audiobridge");
+        }
+        public override bool isSuccess { get { return AudioBridgeReturnCode == "success"; } }
         // Return the return code if it is in the response or empty string if not
-        public string AudioBridgeReturnCode { get { return PluginRespDataString("audiobridge"); } }
+        public string AudioBridgeReturnCode { get { return GetReturnCode(); } }
         // Return the error code if it is in the response or zero if not
         public int AudioBridgeErrorCode { get { return PluginRespDataInt("error_code"); } }
         // Return the room ID if it is in the response or zero if not
@@ -572,21 +579,16 @@ namespace WebRtcVoice
         public long ParticipantId { get { return PluginRespDataLong("id"); } }
     }
     // ==============================================================
-    // Configure request to update the spatial position of a participant in the AudioBridge room.
-    // Janus AudioBridge expects: {"request":"configure","spatial_position":{"x":X,"y":Y,"z":Z}}
+    // Configure request to update the participant panning in the AudioBridge room.
+    // Janus AudioBridge expects: {"request":"configure","spatial_position":<0..100>}
+    // where 0=left, 50=center, 100=right.
     // The room must have been created with spatial_audio=true for this to have any effect.
     public class AudioBridgeConfigSpatialPositionReq : PluginMsgReq
     {
-        public AudioBridgeConfigSpatialPositionReq(float x, float y, float z) : base(new OSDMap()
+        public AudioBridgeConfigSpatialPositionReq(int pan) : base(new OSDMap()
             {
                 { "request", "configure" },
-                { "spatial_position", new OSDMap()
-                    {
-                        { "x", OSD.FromReal(x) },
-                        { "y", OSD.FromReal(y) },
-                        { "z", OSD.FromReal(z) }
-                    }
-                }
+                { "spatial_position", OSD.FromInteger(pan) }
             })
         {
         }

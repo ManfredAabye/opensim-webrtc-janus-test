@@ -297,16 +297,22 @@ namespace WebRtcVoice
             bool ret = false;
             try
             {
+                // Janus AudioBridge supports stereo panning only (0..100), not a full xyz vector.
+                // OpenSim region coordinates are typically 0..256 on X, so map X to pan.
+                int pan = (int)Math.Round((x / 256.0f) * 100.0f);
+                if (pan < 0) pan = 0;
+                else if (pan > 100) pan = 100;
+
                 JanusMessageResp resp = await _AudioBridge.SendPluginMsg(
-                    new AudioBridgeConfigSpatialPositionReq(x, y, z));
+                    new AudioBridgeConfigSpatialPositionReq(pan));
                 if (resp is not null)
                 {
                     ret = true;
                     if (m_log.IsDebugEnabled)
                     {
                         AudioBridgeResp abResp = new AudioBridgeResp(resp);
-                        m_log.DebugFormat("{0} UpdateSpatialPosition. Room={1} Participant={2} pos=({3:F1},{4:F1},{5:F1}) resp={6}",
-                                LogHeader, RoomId, pVSession.ParticipantId, x, y, z, abResp.AudioBridgeReturnCode);
+                        m_log.DebugFormat("{0} UpdateSpatialPosition. Room={1} Participant={2} pos=({3:F1},{4:F1},{5:F1}) pan={6} resp={7}",
+                                LogHeader, RoomId, pVSession.ParticipantId, x, y, z, pan, abResp.AudioBridgeReturnCode);
                     }
                 }
             }

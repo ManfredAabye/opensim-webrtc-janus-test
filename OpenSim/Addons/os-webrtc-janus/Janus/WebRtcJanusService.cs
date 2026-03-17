@@ -56,6 +56,7 @@ namespace WebRtcVoice
         private string _JanusAPIToken = String.Empty;
         private string _JanusAdminURI = String.Empty;
         private string _JanusAdminToken = String.Empty;
+        private string _JanusAudioBridgePlugin = "janus.plugin.audiobridge";
 
         private bool _JanusDebug = false;
         private bool _MessageDetails = false;
@@ -93,6 +94,7 @@ namespace WebRtcVoice
                     _JanusAPIToken = janusConfig.GetString("APIToken", String.Empty);
                     _JanusAdminURI = janusConfig.GetString("JanusGatewayAdminURI", String.Empty);
                     _JanusAdminToken = janusConfig.GetString("AdminAPIToken", String.Empty);
+                    _JanusAudioBridgePlugin = janusConfig.GetString("JanusAudioBridgePlugin", "janus.plugin.audiobridge");
                     // Debugging options
                     _JanusDebug = janusConfig.GetBoolean("JanusDebug", false);
                     _MessageDetails = janusConfig.GetBoolean("MessageDetails", false);
@@ -162,7 +164,7 @@ namespace WebRtcVoice
                 janusSession.OnDisconnect += Handle_Disconnect;
 
                 // Once the session is created, create a handle to the plugin for rooms
-                JanusAudioBridge audioBridge = new JanusAudioBridge(janusSession);
+                JanusAudioBridge audioBridge = new JanusAudioBridge(janusSession, _JanusAudioBridgePlugin);
                 janusSession.AddPlugin(audioBridge);
 
                 pViewerSession.VoiceServiceSessionId = janusSession.SessionId;
@@ -173,7 +175,7 @@ namespace WebRtcVoice
 
                 if (await audioBridge.Activate(_Config))
                 {
-                    _log.DebugFormat("{0} AudioBridgePluginHandle created", LogHeader);
+                    _log.DebugFormat("{0} AudioBridgePluginHandle created ({1})", LogHeader, _JanusAudioBridgePlugin);
                     // Requests through the capabilities will create rooms
                 }
                 else
